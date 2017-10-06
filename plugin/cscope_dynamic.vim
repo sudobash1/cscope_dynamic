@@ -103,6 +103,19 @@ function! s:runShellCommand(cmd)
     call system(a:cmd)
 endfunction
 
+function! s:gotoDir()
+  let s:orig_dir = getcwd()
+  silent! cd -
+  let s:old_dir = getcwd()
+  silent! execute "cd!" s:dir
+endfunction
+
+function! s:returnFromDir()
+  " Make sure that old_dir gets back into the cd history
+  execute "cd " . s:old_dir
+  execute "cd!" s:orig_dir
+endfunction
+
 " Add the file to the small DB file list. {{{2
 " This moves the file to the small cscope DB and triggers an update
 " of the necessary databases.
@@ -112,16 +125,23 @@ function! s:smallListUpdate(file)
 
     " If file moves to small DB then we also do a big DB update so
     " we don't end up with duplicate lookups.
+
+    let path = expand(a:file)
     if s:resolve_links
-        let path = fnamemodify(resolve(expand(a:file)), ":p:.")
-    else
-        let path = fnamemodify(expand(a:file), ":p:.")
+        let path = resolve(path)
     endif
+    let path = fnamemodify(path, ':p')
+
+    call s:gotoDir()
+    let path = simplify(fnamemodify(path, ':.'))
+    call s:returnFromDir()
+
     if !has_key(s:small_file_dict, path)
         let s:small_file_dict[path] = 1
         let s:big_update = 1
-        "call writefile(keys(s:small_file_dict), expand(s:small_file) . ".files")
     endif
+
+  call s:dbUpdate()
 endfunction
 
 " Update any/all of the DBs {{{2
@@ -259,13 +279,8 @@ function! s:dbReset()
     endif
     let s:needs_reset = 0
 
-    " Don't call hook if there are small updates left.
-    " Big update has backoff delay, so we call hook even if
-    " big has an update pending.
-    if s:small_update != 1
-        if exists("*Cscope_dynamic_update_hook")
-            call Cscope_dynamic_update_hook(0)
-        endif
+    if exists("*Cscope_dynamic_update_hook")
+        call Cscope_dynamic_update_hook(0)
     endif
 endfunction
 
@@ -334,8 +349,9 @@ endfunction
 function! s:installAutoCommands()
     augroup cscopedb_augroup
         au!
-        au BufWritePre *.[cChH],*.[cChH]{++,xx,pp} call <SID>smallListUpdate(expand("<afile>"))
-        au BufWritePost *.[cChH],*.[cChH]{++,xx,pp} call <SID>dbUpdate()
+        "au BufWritePre *.[cChH],*.[cChH]{++,xx,pp} call <SID>smallListUpdate(expand("<afile>"))
+        au BufWritePost *.[cChH],*.[cChH]{++,xx,pp} call <SID>smallListUpdate(expand("<afile>"))
+        "au BufWritePost *.[cChH],*.[cChH]{++,xx,pp} call <SID>dbUpdate()
         au FileChangedShellPost *.[cChH],*.[cChH]{++,xx,pp} call <SID>dbFullUpdate()
         au QuickFixCmdPre,CursorHoldI,CursorHold,WinEnter,CursorMoved * call <SID>dbTick()
     augroup END
