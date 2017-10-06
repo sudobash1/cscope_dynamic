@@ -35,15 +35,20 @@ let g:cscope_dynamic_loaded = 1
 
 " Section: Default variables and Tunables {{{1
 "
-if exists("g:cscopedb_big_file")
-    let s:big_file = g:cscopedb_big_file
+if exists("g:cscopedb_dir")
+    let s:dir = fnamemodify(simplify(expand(g:cscopedb_dir)), ":p")
 else
-    let s:big_file = ".cscope.big"
+    let s:dir = "."
+endif
+if exists("g:cscopedb_big_file")
+    let s:big_file = simplify(expand(s:dir . "/" . g:cscopedb_big_file))
+else
+    let s:big_file = simplify(expand(s:dir . "/.cscope.big"))
 endif
 if exists("g:cscopedb_small_file")
-    let s:small_file = g:cscopedb_small_file
+    let s:small_file = simplify(expand(s:dir . "/" . g:cscopedb_small_file))
 else
-    let s:small_file = ".cscope.small"
+    let s:small_file = simplify(expand(s:dir . "/.cscope.small"))
 endif
 if exists("g:cscopedb_auto_init")
     let s:auto_init = g:cscopedb_auto_init
@@ -51,14 +56,14 @@ else
     let s:auto_init = 1
 endif
 if exists("g:cscopedb_extra_files")
-    let s:extra_files = g:cscopedb_extra_files
+    let s:extra_files = simplify(expand(s:dir . "/" . g:cscopedb_extra_files))
 else
-    let s:extra_files = ".cscope.extra.files"
+    let s:extra_files = simplify(expand(s:dir . "/.cscope.extra.files"))
 endif
 if exists("g:cscopedb_src_dirs_file")
-    let s:src_dirs_file = g:cscopedb_src_dirs_file
+    let s:src_dirs_file = simplify(expand(s:dir . "/" . g:cscopedb_src_dirs_file))
 else
-    let s:src_dirs_file = ".cscope.dirs.file"
+    let s:src_dirs_file = simplify(expand(s:dir . "/.cscope.dirs.file"))
 endif
 if exists("g:cscopedb_auto_files")
     let s:auto_files = g:cscopedb_auto_files
@@ -71,9 +76,9 @@ else
     let s:resolve_links = 1
 endif
 if exists("g:cscopedb_lock_file")
-    let s:lock_file = g:cscopedb_lock_file
+    let s:lock_file = simplify(s:dir . "/" . g:cscopedb_lock_file)
 else
-    let s:lock_file = ".cscopedb.lock"
+    let s:lock_file = simplify(s:dir . "/.cscopedb.lock")
 endif
 if exists("g:cscopedb_big_min_interval")
     let s:big_min_interval = g:cscopedb_big_min_interval
@@ -95,14 +100,7 @@ let s:full_update_force = 0
 " Section: Script functions {{{1
 
 function! s:runShellCommand(cmd)
-    " Use perl if we have it. Using :!<shell command>
-    " breaks the tag stack for some reason.
-    "
-    if has('perl')
-        silent execute "perl system('" . a:cmd . "')" | redraw!
-    else 
-        silent execute "!" . a:cmd | redraw!
-    endif
+    call system(a:cmd)
 endfunction
 
 " Add the file to the small DB file list. {{{2
@@ -122,7 +120,7 @@ function! s:smallListUpdate(file)
     if !has_key(s:small_file_dict, path)
         let s:small_file_dict[path] = 1
         let s:big_update = 1
-        call writefile(keys(s:small_file_dict), expand(s:small_file) . ".files")
+        "call writefile(keys(s:small_file_dict), expand(s:small_file) . ".files")
     endif
 endfunction
 
@@ -149,23 +147,24 @@ function! s:dbUpdate()
 
     " Touch lock file synchronously
     call s:runShellCommand("touch ".s:lock_file)
-    
-    " Do small update first. We'll do big update
-    " after the small updates are done.
-    "
+
+    let cmd .= "(cd " . s:dir
+    let cmd .= ";set -f" " turn off sh globbing
+
     if s:small_update == 1
-        let cmd .= "(cscope -kbR "
+        let cmd .= ";cscope -kbR "
         if s:full_update_force
             let cmd .= "-u "
-        else 
+        else
             let cmd .= "-U "
         endif
-        let cmd .= "-i".s:small_file.".files -f".s:small_file
-        let cmd .= "; rm ".s:lock_file
-        let cmd .= ") &>/dev/null &"
+        let cmd .= "-f".s:small_file." "
+        let cmd .= join(keys(s:small_file_dict), " ")
 
         let s:small_update = 2
-    else
+    endif
+
+    if s:big_update == 1
         " Build auto file list
         "
         if filereadable(expand(s:src_dirs_file))
@@ -173,23 +172,21 @@ function! s:dbUpdate()
             for path in readfile(expand(s:src_dirs_file))
                 let src_dirs .= " ".path
             endfor
-        else 
+        else
             let src_dirs = " . "
         endif
 
-        let cmd .= "("
-        let cmd .= "set -f;" " turn off sh globbing
         if s:auto_files
             " Do the find command a 'portable' way
-            let cmd .= "find ".src_dirs." -name *.c   -or -name *.h -or"
-            let cmd .=       " -name *.C   -or -name *.H -or"
-            let cmd .=       " -name *.c++ -or -name *.h++ -or"
-            let cmd .=       " -name *.cxx -or -name *.hxx -or"
-            let cmd .=       " -name *.cc  -or -name *.hh -or"
-            let cmd .=       " -name *.cpp -or -name *.hpp"
-            let cmd .=       " -type f"
+            let cmd .= ";find ".src_dirs." -name *.c   -or -name *.h -or"
+            let cmd .=        " -name *.C   -or -name *.H -or"
+            let cmd .=        " -name *.c++ -or -name *.h++ -or"
+            let cmd .=        " -name *.cxx -or -name *.hxx -or"
+            let cmd .=        " -name *.cc  -or -name *.hh -or"
+            let cmd .=        " -name *.cpp -or -name *.hpp"
+            let cmd .=        " -type f"
         else
-            let cmd .= "echo "  " dummy so following cat command does not hang.
+            let cmd .= ";echo "  " dummy so following cat command does not hang.
         endif
 
         " trick to combine extra file list below and auto list above
@@ -205,26 +202,25 @@ function! s:dbUpdate()
         " prune entries that are in the small DB
         "
         if !empty(s:small_file_dict)
-            let cmd .= " | grep -v -f".s:small_file.".files "
+            let cmd .= " | grep -v '\\(" . join(keys(s:small_file_dict), "\\|") . "\\)'"
         endif
-
-        let cmd .= "> ".s:big_file.".files"
 
         " Build the tags
         "
-        let cmd .= " && nice cscope -kqbR "
+        let cmd .= " | nice cscope -kqbR "
         if s:full_update_force
             let cmd .= "-u "
-        else 
+        else
             let cmd .= "-U "
         endif
-        let cmd .= "-i".s:big_file.".files -f".s:big_file
-        let cmd .= "; rm ".s:lock_file
-        let cmd .= ") &>/dev/null &"
+        let cmd .= "-i- -f".s:big_file
 
         let s:big_update = 2
         let s:full_update_force = 0
     endif
+
+    let cmd .= "; rm ".s:lock_file
+    let cmd .= ") &"
 
     call s:runShellCommand(cmd)
 
@@ -250,7 +246,8 @@ function! s:dbReset()
             silent cs reset
         endif
         let s:small_update = 0
-    elseif s:big_update == 2
+    endif
+    if s:big_update == 2
         if !s:big_init
             silent execute "cs add " . s:big_file
             let s:big_init = 1
@@ -309,9 +306,14 @@ function! s:init()
         let s:small_init = 1
 
         " Seed the cscopedb_small_file_dict dictionary with the file list
-        " from the small DB.
+        " from the small DB. Dynamically obtain this with cscope -L7 '.*' and awk
         "
-        for path in readfile(expand(s:small_file) . ".files")
+
+        let cmd = "cd " . s:dir . ";"
+        let cmd .= "cscope -dRL7 '.*' -f " . s:small_file . " | "
+        let cmd .= "awk '{printf $1\" \"}'"
+        for path in split(system(cmd))
+        "for path in readfile(expand(s:small_file) . ".files")
             let s:small_file_dict[path] = 1
         endfor
     endif

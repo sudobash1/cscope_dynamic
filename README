@@ -66,9 +66,13 @@ cscope key maps.
 There are some variables that can be set changes the behavior of
 cscope_dynamic.
 
-g:cscopedb_big_file          Sets the name and location of the big cscope DB.
+g:cscopedb_dir               Treat all files as relative to this directory.
+                             When g:cscopedb_auto_files is set, search this
+                             directory for all files. Defaults to cwd.
 
-g:cscopedb_small_file        Sets the name and location of the small cscope DB.
+g:cscopedb_big_file          Sets the name of the big cscope DB.
+
+g:cscopedb_small_file        Sets the name of the small cscope DB.
 
 g:cscopedb_auto_init         If true, auto init cscope_dynamic if the DB
                              g:cscopedb_big_file already exists.
