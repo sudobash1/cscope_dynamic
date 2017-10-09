@@ -100,7 +100,7 @@ let s:full_update_force = 0
 " Section: Script functions {{{1
 
 function! s:runShellCommand(cmd)
-    call system(a:cmd)
+  silent execute "!" . a:cmd | redraw!
 endfunction
 
 function! s:gotoDir()
