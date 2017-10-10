@@ -198,13 +198,24 @@ function! s:dbUpdate()
 
         if s:auto_files
             " Do the find command a 'portable' way
-            let cmd .= ";find ".src_dirs." -name *.c   -or -name *.h -or"
+            let cmd .= ";find ".src_dirs." \\( -name *.c   -or -name *.h -or"
             let cmd .=        " -name *.C   -or -name *.H -or"
             let cmd .=        " -name *.c++ -or -name *.h++ -or"
             let cmd .=        " -name *.cxx -or -name *.hxx -or"
             let cmd .=        " -name *.cc  -or -name *.hh -or"
-            let cmd .=        " -name *.cpp -or -name *.hpp"
-            let cmd .=        " -type f"
+            let cmd .=        " -name *.cpp -or -name *.hpp \\)"
+            if s:has_realpath
+              " Include links in the results and expand them with realpath.
+              let cmd .=      " \\( -type f -or -type l \\)"
+              let cmd .=      " -exec realpath --relative-to=$(pwd) \\{\\} \\;"
+              " Symlinks may be pointing to files we already found.
+              " Filter out duplicates
+              let cmd .=      " | sort | uniq"
+            else
+              " We have no way to resolve symlinks, and cscope cannot handle
+              " them.
+              let cmd .=      " -type f"
+            endif
         else
             let cmd .= ";echo "  " dummy so following cat command does not hang.
         endif
@@ -328,10 +339,11 @@ function! s:init()
         let cmd .= "cscope -dRL7 '.*' -f " . s:small_file . " | "
         let cmd .= "awk '{printf $1\" \"}'"
         for path in split(system(cmd))
-        "for path in readfile(expand(s:small_file) . ".files")
             let s:small_file_dict[path] = 1
         endfor
     endif
+
+    let s:has_realpath = system("command -v realpath >/dev/null 2>&1 && echo 1") == "1"
 
     call s:installAutoCommands()
     call s:dbFullUpdate()
